@@ -2,7 +2,7 @@ package commands
 
 import (
 	"bytes"
-	"crypto/rand"
+	//"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -20,13 +20,13 @@ import (
 
 const (
 	OBLIVIOUS_DOH = "application/oblivious-dns-message"
-	TARGET_HTTP_MODE = "https"
-	PROXY_HTTP_MODE = "https"
+	TARGET_HTTP_MODE = "http"
+	PROXY_HTTP_MODE = "http"
 )
 
 func createPlainQueryResponse(hostname string, serializedDnsQueryString []byte) (response *dns.Msg, err error) {
 	client := http.Client{}
-	queryUrl := fmt.Sprintf("https://%s/dns-query", hostname)
+	queryUrl := fmt.Sprintf("http://%s/dns-query", hostname)
 	req, err := http.NewRequest(http.MethodGet, queryUrl, nil)
 	if err != nil {
 		log.Fatalln(err)
@@ -136,23 +136,32 @@ func DiscoverProxiesAndTargets(hostname string, client *http.Client) (response D
 }
 
 func RetrievePublicKey(ip string, client *http.Client) (odoh.ObliviousDNSPublicKey, error) {
-	req, err := http.NewRequest(http.MethodGet, TARGET_HTTP_MODE + "://" + ip + "/pk", nil)
-	if err != nil {
-		log.Fatalln(err)
+	// req, err := http.NewRequest(http.MethodGet, TARGET_HTTP_MODE + "://" + ip + "/pk", nil)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+
+	// resp, err := client.Do(req)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+	// bodyBytes, err := ioutil.ReadAll(resp.Body)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// odohPublicKey := odoh.UnMarshalObliviousDNSPublicKey(bodyBytes)
+	pkBytes := []byte{224,134,140,88,184,201,145,48,87,100,194,132,178,33,144,75,158,202,156,111,40,206,15,246,98,235,65,200,172,110,210,47}
+	odohPublicKey := odoh.ObliviousDNSPublicKey{
+		KemID:          hpke.DHKEM_X25519,
+		KdfID:          hpke.KDF_HKDF_SHA256,
+		AeadID:         hpke.AEAD_AESGCM128,
+		PublicKeyBytes: pkBytes,
 	}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	return odohPublicKey, nil
 
-	odohPublicKey := odoh.UnMarshalObliviousDNSPublicKey(bodyBytes)
-
-	return odohPublicKey, err
+	// return odohPublicKey, err
 }
 
 
@@ -188,11 +197,13 @@ func obliviousDnsRequest(c *cli.Context) error {
 		useproxy = true
 	}
 
-	key := make([]byte, 16)  // Hardcoding these values for specifically AES_GCM128
-	_, err := rand.Read(key)
-	if err != nil {
-		log.Fatalf("Unable to read random bytes to make a symmetric key.\n")
-	}
+	// key := make([]byte, 16)  // Hardcoding these values for specifically AES_GCM128
+	// _, err := rand.Read(key)
+	// fmt.Printf("key DEBUG: [%v]", key)
+	// if err != nil {
+	// 	log.Fatalf("Unable to read random bytes to make a symmetric key.\n")
+	// }
+	key := []byte{155,76,84,7,92,148,180,189,104,8,199,183,23,20,126,19};
 
 	if useproxy == true {
 		fmt.Printf("Using %v as the proxy to send the ODOH Message\n", proxy)
