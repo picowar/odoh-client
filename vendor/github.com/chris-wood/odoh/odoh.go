@@ -29,7 +29,6 @@ import (
 	"errors"
 	"github.com/cisco/go-hpke"
 	"log"
-	"fmt"
 )
 
 type ObliviousDNSPublicKey struct {
@@ -213,16 +212,10 @@ func (targetKey ObliviousDNSPublicKey) EncryptQuery(query ObliviousDNSQuery) (Ob
 	if err != nil {
 		return ObliviousDNSMessage{}, err
 	}
-	fmt.Printf("enc: %v\n", enc)
-	keySize := suite.KEM.PublicKeySize()
-	fmt.Printf("keysize: %v", keySize)
 
 	encodedMessage := query.Marshal()
-	fmt.Printf("encodedMessage: %v\n", encodedMessage)
 	aad := append([]byte{0x01}, targetKey.KeyID()...)
-	fmt.Printf("aad: %v\n", aad)
 	ct := ctxI.Seal(aad, encodedMessage)
-	fmt.Printf("ct: %v\n", ct)
 
 	return ObliviousDNSMessage{
 		MessageType:      QueryType,

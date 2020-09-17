@@ -151,7 +151,7 @@ func RetrievePublicKey(ip string, client *http.Client) (odoh.ObliviousDNSPublicK
 	// }
 
 	// odohPublicKey := odoh.UnMarshalObliviousDNSPublicKey(bodyBytes)
-	pkBytes := []byte{224,134,140,88,184,201,145,48,87,100,194,132,178,33,144,75,158,202,156,111,40,206,15,246,98,235,65,200,172,110,210,47}
+	pkBytes := []byte{85, 232, 242, 165, 106, 24, 255, 130, 68, 60, 26, 190, 158, 252, 198, 107, 68, 197, 145, 43, 231, 29, 133, 203, 57, 25, 1, 10, 123, 95, 39, 56}
 	odohPublicKey := odoh.ObliviousDNSPublicKey{
 		KemID:          hpke.DHKEM_X25519,
 		KdfID:          hpke.KDF_HKDF_SHA256,
