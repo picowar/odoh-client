@@ -250,9 +250,27 @@ func (privateKey ObliviousDNSKeyPair) DecryptQuery(message ObliviousDNSMessage) 
 	return UnmarshalQueryBody(dnsMessage)
 }
 
+func DeriveKeyNonce(suite hpke.CipherSuite, dnsQuery ObliviousDNSQuery) ([]byte, []byte) {
+	h := sha256.New()
+	h.Write(dnsQuery.DnsMessage)
+	context := h.Sum(nil)
+
+    key_info := []byte("odoh key")
+	key_info = append(key_info, context...)
+	
+	nonce_info := []byte("odoh nonce")
+	nonce_info = append(nonce_info, context...)
+	
+	prk := suite.KDF.Extract(nil, dnsQuery.ResponseSeed[:])
+	key := suite.KDF.Expand(prk, key_info, 16)
+	nonce := suite.KDF.Expand(prk, nonce_info, 12)
+
+    return key, nonce
+}
+
 type QueryContext struct {
-	key       []byte
-	publicKey ObliviousDNSPublicKey
+	responseSeed [ResponseSeedLength]byte
+	publicKey    ObliviousDNSPublicKey
 }
 
 func lookupAeadKeySizeByAeadID(id hpke.AEADID) int {
@@ -269,32 +287,23 @@ func lookupAeadKeySizeByAeadID(id hpke.AEADID) int {
 }
 
 func createQueryContext(publicKey ObliviousDNSPublicKey) QueryContext {
-	keySize := lookupAeadKeySizeByAeadID(publicKey.AeadID)
-	if keySize == 0 {
-		return QueryContext{
-			key:       nil,
-			publicKey: publicKey,
-		}
-	}
-	responseKey := make([]byte, keySize)
-	_, err := rand.Read(responseKey)
+	var responseSeed [ResponseSeedLength]byte
+	_, err := rand.Read(responseSeed[:])
 	if err != nil {
-		return QueryContext{
-			key:       nil,
-			publicKey: publicKey,
-		}
+		return QueryContext{}
 	}
 	return QueryContext{
-		key:       responseKey,
-		publicKey: publicKey,
+		responseSeed: responseSeed,
+		publicKey:    publicKey,
 	}
 }
 
 func SealQuery(dnsQuery []byte, publicKey ObliviousDNSPublicKey) ([]byte, QueryContext, error) {
 	queryContext := createQueryContext(publicKey)
 	odohQuery := ObliviousDNSQuery{
-		ResponseKey: queryContext.key,
-		DnsMessage:  dnsQuery,
+		DnsMessage:   dnsQuery,
+		ResponseSeed: queryContext.responseSeed,
+		Padding:      []byte{},
 	}
 
 	odnsMessage, err := queryContext.publicKey.EncryptQuery(odohQuery)
@@ -306,9 +315,9 @@ func SealQuery(dnsQuery []byte, publicKey ObliviousDNSPublicKey) ([]byte, QueryC
 	return odnsMessage.Marshal(), queryContext, nil
 }
 
-func (c QueryContext) OpenAnswer(encryptedDnsAnswer []byte) ([]byte, error) {
+func (c QueryContext) OpenAnswer(dnsQuery ObliviousDNSQuery, encryptedDnsAnswer []byte) ([]byte, error) {
 	message := CreateObliviousDNSMessage(ResponseType, []byte{}, encryptedDnsAnswer)
-	odohResponse := ObliviousDNSResponse{ResponseKey: c.key}
+	odohResponse := ObliviousDNSResponse{ResponseKey: c.responseSeed[:]}
 	responseMessageType := message.MessageType
 	if responseMessageType != ResponseType {
 		return nil, errors.New("answer is not a valid response type")
@@ -320,7 +329,7 @@ func (c QueryContext) OpenAnswer(encryptedDnsAnswer []byte) ([]byte, error) {
 
 	suite, err := hpke.AssembleCipherSuite(c.publicKey.KemID, c.publicKey.KdfID, c.publicKey.AeadID)
 
-	decryptedResponse, err := odohResponse.DecryptResponse(suite, aad, encryptedResponse)
+	decryptedResponse, err := odohResponse.DecryptResponse(suite, aad, encryptedResponse, dnsQuery)
 	if err != nil {
 		return nil, errors.New("unable to decrypt the obtained response using the symmetric key sent")
 	}
