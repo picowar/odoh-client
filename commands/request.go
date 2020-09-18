@@ -2,7 +2,7 @@ package commands
 
 import (
 	"bytes"
-	"crypto/rand"
+	// "crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -20,8 +20,8 @@ import (
 
 const (
 	OBLIVIOUS_DOH = "application/oblivious-dns-message"
-	TARGET_HTTP_MODE = "https"
-	PROXY_HTTP_MODE = "https"
+	TARGET_HTTP_MODE = "http"
+	PROXY_HTTP_MODE = "http"
 )
 
 func createPlainQueryResponse(hostname string, serializedDnsQueryString []byte) (response *dns.Msg, err error) {
@@ -136,23 +136,32 @@ func DiscoverProxiesAndTargets(hostname string, client *http.Client) (response D
 }
 
 func RetrievePublicKey(ip string, client *http.Client) (odoh.ObliviousDNSPublicKey, error) {
-	req, err := http.NewRequest(http.MethodGet, TARGET_HTTP_MODE + "://" + ip + "/pk", nil)
-	if err != nil {
-		log.Fatalln(err)
+	// req, err := http.NewRequest(http.MethodGet, TARGET_HTTP_MODE + "://" + ip + "/pk", nil)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+
+	// resp, err := client.Do(req)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+	// bodyBytes, err := ioutil.ReadAll(resp.Body)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// odohPublicKey := odoh.UnMarshalObliviousDNSPublicKey(bodyBytes)
+	pkBytes := []byte{85, 232, 242, 165, 106, 24, 255, 130, 68, 60, 26, 190, 158, 252, 198, 107, 68, 197, 145, 43, 231, 29, 133, 203, 57, 25, 1, 10, 123, 95, 39, 56}
+	odohPublicKey := odoh.ObliviousDNSPublicKey{
+		KemID:          hpke.DHKEM_X25519,
+		KdfID:          hpke.KDF_HKDF_SHA256,
+		AeadID:         hpke.AEAD_AESGCM128,
+		PublicKeyBytes: pkBytes,
 	}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	return odohPublicKey, nil
 
-	odohPublicKey := odoh.UnMarshalObliviousDNSPublicKey(bodyBytes)
-
-	return odohPublicKey, err
+	// return odohPublicKey, err
 }
 
 
@@ -188,11 +197,13 @@ func obliviousDnsRequest(c *cli.Context) error {
 		useproxy = true
 	}
 
-	key := make([]byte, 16)  // Hardcoding these values for specifically AES_GCM128
-	_, err := rand.Read(key)
-	if err != nil {
-		log.Fatalf("Unable to read random bytes to make a symmetric key.\n")
-	}
+	// key := make([]byte, 16)  // Hardcoding these values for specifically AES_GCM128
+	// _, err := rand.Read(key)
+	// fmt.Printf("key DEBUG: [%v]", key)
+	// if err != nil {
+	// 	log.Fatalf("Unable to read random bytes to make a symmetric key.\n")
+	// }
+	key := []byte{155,76,84,7,92,148,180,189,104,8,199,183,23,20,126,19};
 
 	if useproxy == true {
 		fmt.Printf("Using %v as the proxy to send the ODOH Message\n", proxy)
@@ -212,7 +223,7 @@ func obliviousDnsRequest(c *cli.Context) error {
 
 	fmt.Println("[ODNS] Request : ", domainName, dnsTypeString, key)
 
-	serializedODoHQueryMessage, err := prepareOdohQuestion(domainName, dnsType, key, odohPublicKeyBytes)
+	ODoHQueryMessage, serializedODoHQueryMessage, err := prepareOdohQuestion(domainName, dnsType, key, odohPublicKeyBytes)
 
 	if err != nil {
 		log.Fatalln("Unable to Create the ODoH Query with the DNS Question")
@@ -223,12 +234,17 @@ func obliviousDnsRequest(c *cli.Context) error {
 		log.Fatalln("Unable to Obtain an Encrypted Response from the Target Resolver")
 	}
 
-	dnsResponse, err := validateEncryptedResponse(odohMessage, key)
+	dnsResponse, err := validateEncryptedResponse(odohMessage, ODoHQueryMessage, key)
 	fmt.Println("[ODOH] Response : \n", dnsResponse)
 	return nil
 }
 
-func validateEncryptedResponse(message *odoh.ObliviousDNSMessage, key []byte) (response *dns.Msg, err error) {
+func validatePadding(padding []byte) bool {
+	zeros := make([]byte, len(padding))
+	return bytes.Equal(padding, zeros) 
+}
+
+func validateEncryptedResponse(message *odoh.ObliviousDNSMessage, query odoh.ObliviousDNSQuery, key []byte) (response *dns.Msg, err error) {
 	odohResponse := odoh.ObliviousDNSResponse{ResponseKey: key}
 
 	responseMessageType := message.MessageType
@@ -252,15 +268,20 @@ func validateEncryptedResponse(message *odoh.ObliviousDNSMessage, key []byte) (r
 	responseKeyId := []byte{0x00, 0x00}
 	aad := append([]byte{0x02}, responseKeyId...) // message_type = 0x02, with an empty keyID
 
-	decryptedResponse, err := odohResponse.DecryptResponse(suite, aad, encryptedResponse)
-
+	decryptedResponseBytes, err := odohResponse.DecryptResponse(suite, aad, encryptedResponse, query)
+	decryptedResponse, err := odoh.UnmarshalDNSResponse(decryptedResponseBytes)
 	if err != nil {
 		log.Printf("Unable to decrypt the obtained response using the symmetric key sent.")
 	}
+	
+	log.Printf("[ODOH] [Decrypted Response] : %v\n\n", decryptedResponse.DnsMessage)
 
-	log.Printf("[ODOH] [Decrypted Response] : %v\n", decryptedResponse)
+	if !validatePadding(decryptedResponse.Padding) {
+		log.Printf("Padding is not all zeros")
+		return nil, err
+	}
 
-	dnsBytes, err := parseDnsResponse(decryptedResponse)
+	dnsBytes, err := parseDnsResponse(decryptedResponse.DnsMessage)
 	if err != nil {
 		log.Printf("Unable to parse DNS bytes after decryption of the message from target server.")
 		return nil, err

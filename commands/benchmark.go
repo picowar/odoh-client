@@ -121,7 +121,7 @@ func (e *experiment) run(client *http.Client, channel chan experimentResult) {
 	requestId := sha256.Sum256(symmetricKey)
 	hashingTime := time.Now().UnixNano()
 	rt.ClientHashingOverheadTime = hashingTime
-	serializedODoHQueryMessage, err := prepareOdohQuestion(hostname, dnsType, symmetricKey, targetPublicKey)
+	ODoHQueryMessage, serializedODoHQueryMessage, err := prepareOdohQuestion(hostname, dnsType, symmetricKey, targetPublicKey)
 	timeToPrepareQuestionAndSerialize := time.Now().UnixNano()
 	rt.ClientQueryEncryptionTime = timeToPrepareQuestionAndSerialize
 	if err != nil {
@@ -156,7 +156,7 @@ func (e *experiment) run(client *http.Client, channel chan experimentResult) {
 	}
 
 	log.Printf("[DNSANSWER] %v %v\n", odohMessage, symmetricKey)
-	dnsAnswer, err := validateEncryptedResponse(odohMessage, symmetricKey)
+	dnsAnswer, err := validateEncryptedResponse(odohMessage, ODoHQueryMessage, symmetricKey)
 	validationTime := time.Now().UnixNano()
 	rt.ClientAnswerDecryptionTime = validationTime
 	if err != nil || dnsAnswer == nil {

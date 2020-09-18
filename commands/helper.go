@@ -39,25 +39,29 @@ func prepareDnsQuestion(domain string, questionType uint16) (res []byte) {
 	return dnsSerializedString
 }
 
-func prepareOdohQuestion(domain string, questionType uint16, key []byte, publicKey odoh.ObliviousDNSPublicKey) (res []byte, err error) {
+func prepareOdohQuestion(domain string, questionType uint16, key []byte, publicKey odoh.ObliviousDNSPublicKey) (res odoh.ObliviousDNSQuery, msg []byte, err error) {
 	start := time.Now()
 	dnsMessage := prepareDnsQuestion(domain, questionType)
 	prepareQuestionTime := time.Since(start)
 
+	var seed [odoh.ResponseSeedLength]byte
+	copy(seed[:], key)
+
 	odohQuery := odoh.ObliviousDNSQuery{
-		ResponseKey: key,
 		DnsMessage:  dnsMessage,
+		ResponseSeed: seed,
+		Padding: []byte{},
 	}
 
 	odnsMessage, err := publicKey.EncryptQuery(odohQuery)
 	encryptionTime := time.Since(start)
 	if err != nil {
 		log.Fatalf("Unable to Encrypt oDoH Question with provided Public Key of Resolver")
-		return nil, err
+		return odoh.ObliviousDNSQuery{}, nil, err
 	}
 
 	log.Printf("Time to Prepare DNS Question : [%v]\n", prepareQuestionTime.Milliseconds())
 	log.Printf("Time to Encrypt DNS Question : [%v]\n", encryptionTime.Milliseconds())
 
-	return odnsMessage.Marshal(), nil
+	return odohQuery, odnsMessage.Marshal(), nil
 }
