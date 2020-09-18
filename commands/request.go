@@ -269,9 +269,13 @@ func validateEncryptedResponse(message *odoh.ObliviousDNSMessage, query odoh.Obl
 	aad := append([]byte{0x02}, responseKeyId...) // message_type = 0x02, with an empty keyID
 
 	decryptedResponseBytes, err := odohResponse.DecryptResponse(suite, aad, encryptedResponse, query)
-	decryptedResponse, err := odoh.UnmarshalDNSResponse(decryptedResponseBytes)
 	if err != nil {
 		log.Printf("Unable to decrypt the obtained response using the symmetric key sent.")
+	}
+	
+	decryptedResponse, err := odoh.UnmarshalDNSResponse(decryptedResponseBytes)
+	if err != nil {
+		log.Printf("Unable to unmarshal received response")
 	}
 	
 	log.Printf("[ODOH] [Decrypted Response] : %v\n\n", decryptedResponse.DnsMessage)
