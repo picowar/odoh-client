@@ -13,9 +13,9 @@ build: clean
 	@echo "Building the binary for odoh-client ..."
 	@echo "Tag: $(COMMIT_ID)"
 	@echo "Version: $(VERSION)"
-	@go build -ldflags "-X main.Version=$(VERSION) -X main.CommitId=$(COMMIT_ID)" ./cmd/*
+	@go build -mod=vendor -ldflags "-X main.Version=$(VERSION) -X main.CommitId=$(COMMIT_ID)" ./cmd/*
 
 install:
-	@go install -ldflags "-X main.Version=$(VERSION) -X main.CommitId=$(COMMIT_ID)" ./cmd/*
+	@go install -mod=vendor -ldflags "-X main.Version=$(VERSION) -X main.CommitId=$(COMMIT_ID)" ./cmd/*
 
 .PHONY: all clean build install
